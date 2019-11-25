@@ -20,7 +20,7 @@ eps=1e-10
 DTYPE = torch.float32
 
 
-# In[288]:
+# In[323]:
 
 
 class Net(nn.Module):
@@ -67,7 +67,7 @@ class Net(nn.Module):
         self.is_continuous = True
 
 
-# In[289]:
+# In[324]:
 
 
 class ReplayBuffer():
@@ -91,7 +91,8 @@ class ReplayBuffer():
         self.weights.append(weight)
         
         if self.length > self.max_length:
-            idx = np.random.randint(self.length)
+            wts = np.array(self.weights)
+            idx = np.random.choice(self.length, p=1-wts/wts.sum())
             del self.buffer[idx]
             del self.weights[idx]
             self.length-=1
@@ -109,7 +110,7 @@ class ReplayBuffer():
     
 
 
-# In[314]:
+# In[379]:
 
 
 class PCL(object):
@@ -223,18 +224,19 @@ class PCL(object):
     
     def train(self, max_ep_length=-1):
         tot_rewards = []
+        mean_ep_reward = []
+        fig = plt.figure()
+        
+        means = []
+        ma = []
+        mi = []
+        
         for i in range(self.epoch):
             episode = self.rollout(max_ep_length)        
             self.optimise([episode])
             
             r = np.array(episode['rewards'])
-            tot_rewards.append(r.sum())
             
-            if i>20: 
-                print("I: {},    B:{}       R: {}                    ".format(i, self.replay_buffer.length, np.mean(tot_rewards[-20:])), end='\r')
-            else:
-                print("I: {},    B:{}       R: {}                    ".format(i, self.replay_buffer.length, tot_rewards[-1]), end='\r')
-                
             self.replay_buffer.add(episode)
             
             ########off policy
@@ -243,12 +245,31 @@ class PCL(object):
                     episodes = self.replay_buffer.sample()
                     self.optimise(episodes)
             
-#             print(i)
-#             for x in self.net.pi.parameters():
-#                 print(x)
+            
+            tot_rewards.append(r.sum())
+            mean_ep_reward.append(r.mean())
+            
+            if i>10: 
+                print("I: {},    B:{}       R: {}                    ".format(i, self.replay_buffer.length, np.mean(tot_rewards[-10:])), end='\r')
+            else:
+                print("I: {},    B:{}       R: {}                    ".format(i, self.replay_buffer.length, tot_rewards[-1]), end='\r')
+                continue
+            
+            fig.clf()
+
+            means.append(np.array(tot_rewards)[-10:].mean())
+            plt.plot(np.arange(len(means)), np.array(means), c='r')
+
+            mi.append(np.array(tot_rewards)[-10:].min())
+            ma.append(np.array(tot_rewards)[-10:].max())
+            plt.fill_between(np.arange(len(means)), mi, ma, color='r', alpha=0.5)
+
+            fig.canvas.draw()
+            
+        return mean_ep_reward, tot_rewards
 
 
-# In[315]:
+# In[380]:
 
 
 class ContinuousPCL(PCL):
@@ -277,7 +298,7 @@ class ContinuousPCL(PCL):
         return torch.tensor(action, dtype=DTYPE)
 
 
-# In[316]:
+# In[381]:
 
 
 class CopyPCL(PCL):
@@ -298,12 +319,13 @@ class CopyPCL(PCL):
     
 
 
-# In[317]:
+# In[384]:
 
 
-env = gym.make('Copy-v0').env
-buffer = ReplayBuffer(32, 10000, 1)
-agent = CopyPCL(env, buffer, 1, 12, epoch=100000, off_policy_rate=20,entropy_tau=0.05, pi_lr=0.005, ve_lr=0.0025)
+get_ipython().run_line_magic('matplotlib', 'notebook')
+env = gym.make('Copy-v0')
+buffer = ReplayBuffer(32, 10000, 1, sample_size=400)
+agent = CopyPCL(env, buffer, 1, 12, epoch=100000, off_policy_rate=5,entropy_tau=0.05, pi_lr=0.005, ve_lr=0.0025)
 # agent.getStateEnc = lambda x: np.eye(6)[int(x)]
 # agent.getStateDec = lambda x: np.argmax(x)
 
@@ -311,13 +333,13 @@ agent = CopyPCL(env, buffer, 1, 12, epoch=100000, off_policy_rate=20,entropy_tau
 # In[ ]:
 
 
-agent.train(100)
+a = agent.train()
 
 
-# In[245]:
+# In[372]:
 
 
-agent.getAction(0)
+agent.getAction(9)
 
 
 # In[ ]:
